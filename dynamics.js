@@ -138,100 +138,146 @@ var presetTimingFunctions = {
 
 function DrawerController(options) {
     this.velocityTracker = new VelocityTracker();
-    this.animator = new Animator(this);
-
     this.target = options.target;
-    this.left = options.left;
-    this.right = options.right;
-    this.position = options.position;
-
-    this.width = this.right - this.left;
-    this.curve = presetTimingFunctions[options.curve || 'linear'];
-
     this.willOpenCallback = options.willOpen;
-    this.didCloseCallback = options.didClose;
-    this.animateCallback = options.onAnimate;
-
-    this.state = DrawerController.kClosed;
-
-    this.defaultAnimationSpeed = (this.right - this.left) / DrawerController.kBaseSettleDurationMS;
+    
+    this.movement = options.movement;
+    this.easing = options.curve || 'linear';
+    this.animation = options.animation;
+    var container = new ParGroup([this.animation], {
+      easing: this.easing,
+      fill: 'both'
+    });
+    
+    var didCloseCallback = options.didClose;
+    container.onend = function() {
+      if (this.progress() == 0) {
+        didCloseCallback();
+      }
+    }.bind(this);
+    
+    this.animationDuration = 0.4;
+    
+    this.containerTiming = container.specified;
+    this.animationTiming = this.animation.specified;
+    
+    this.player = document.timeline.play(container);
+    this.player.paused = true;
 
     this.onTouchMove = this.onTouchMove.bind(this);
     this.onTouchEnd = this.onTouchEnd.bind(this);
 
     this.target.addEventListener('touchstart', this.onTouchStart.bind(this));
-}
-
-DrawerController.kOpened = 'opened';
-DrawerController.kClosed = 'closed';
-DrawerController.kOpening = 'opening';
-DrawerController.kClosing = 'closing';
-DrawerController.kDragging = 'dragging';
-DrawerController.kFlinging = 'flinging';
-
-DrawerController.kBaseSettleDurationMS = 246;
-DrawerController.kMaxSettleDurationMS = 600;
+};
 
 DrawerController.kMinFlingVelocity = 0.4;  // Matches Android framework.
 DrawerController.kTouchSlop = 5;  // Matches Android framework.
 DrawerController.kTouchSlopSquare = DrawerController.kTouchSlop * DrawerController.kTouchSlop;
 
-DrawerController.prototype.restrictToCurrent = function(offset) {
-    return Math.max(this.left, Math.min(this.position, offset));
+DrawerController.prototype.progress = function() {
+  return Math.min(1, Math.max(0,
+      this.animation.localTime + this.animation.specified.iterationStart));
 };
 
-DrawerController.prototype.restrictToBounds = function(offset) {
-    return Math.max(this.left, Math.min(this.right, offset));
+DrawerController.prototype.isScrubbing = function() {
+  return this.player.paused;
+}
+
+DrawerController.prototype.prepareAnimationForScrubbing = function() {
+    var progress = this.progress();
+    
+    this.containerTiming.easing = 'linear';
+    this.containerTiming.direction = 'normal';
+
+    this.animationTiming.iterations = 1;
+    this.animationTiming.iterationStart = 0;
+
+    this.player.paused = true;
+    this.player.currentTime = progress;
+};
+
+DrawerController.prototype.resumeAnimation = function(direction) {
+    var progress = this.progress();
+
+    // Slice the entire open/close animation to play from
+    // the current position to one end depending on direction.
+    var sliceProgress = 0;
+    var sliceStart;
+    var sliceEnd;
+    
+    if (direction == 'normal') {
+        sliceStart = progress;
+        sliceEnd = 1;
+    } else {
+        sliceStart = 0;
+        sliceEnd = progress;
+    }
+    
+    // If already at the end, seek instead of slicing.
+    if (sliceStart == sliceEnd) {
+        sliceProgress = 1;
+        sliceStart = 0;
+        sliceEnd = 1;
+    }
+
+    var iterationFraction = sliceEnd - sliceStart;
+
+    this.animationTiming.iterationStart = sliceStart;
+    this.animationTiming.iterations = iterationFraction;
+
+    this.containerTiming.direction = direction;
+    this.containerTiming.easing = this.easing;
+
+    this.player.paused = false;
+    this.player.currentTime = sliceProgress;
+    this.player.playbackRate = (1 / this.animationDuration) / (1 / iterationFraction);
+};
+
+DrawerController.prototype.fling = function(velocity) {
+    this.resumeAnimation(velocity > 0 ? 'normal' : 'reverse');
+    
+    var fraction = this.player.source.endTime;
+    var distance = fraction * this.movement;
+    var time = (distance / Math.abs(velocity)) / 1000;
+    var rate = fraction / time;
+
+    this.player.playbackRate = rate;
+    this.containerTiming.easing = 'linear';
 };
 
 DrawerController.prototype.onTouchStart = function(e) {
     this.velocityTracker.onTouchStart(e);
 
-    var touchX = e.changedTouches[0].clientX;
-    var touchY = e.changedTouches[0].clientY;
-
-    if (this.state != DrawerController.kOpened) {
-        if (touchX != this.restrictToCurrent(touchX))
-            return;
-        this.state = DrawerController.kDragging;
-    }
-
-    this.animator.stopAnimation();
+    var touchX = e.changedTouches[0].screenX;
+    var touchY = e.changedTouches[0].screenY;
+    
     this.target.addEventListener('touchmove', this.onTouchMove);
     this.target.addEventListener('touchend', this.onTouchEnd);
     // TODO(abarth): Handle touchcancel.
 
+    this.baseX = touchX;
     this.startX = touchX;
     this.startY = touchY;
-    this.startPosition = this.position;
-    this.touchBaseX = Math.min(touchX, this.startPosition);
+    this.prepareAnimationForScrubbing();
 };
 
 DrawerController.prototype.onTouchMove = function(e) {
-    this.velocityTracker.onTouchMove(e);
-
-    if (this.state == DrawerController.kOpened) {
-        var deltaX = e.changedTouches[0].clientX - this.startX;
-        var deltaY = e.changedTouches[0].clientY - this.startY;
-
-        if (deltaX * deltaX + deltaY * deltaY < DrawerController.kTouchSlopSquare) {
-            e.preventDefault();
-            return;
-        }
-
+    var deltaX = e.changedTouches[0].screenX - this.startX;
+    var deltaY = e.changedTouches[0].screenY - this.startY;
+    if ((this.progress() == 0 || this.progress() == 1) && this.isScrubbing()) {
         if (Math.abs(deltaY) > Math.abs(deltaX)) {
             this.target.removeEventListener('touchmove', this.onTouchMove);
             this.target.removeEventListener('touchend', this.onTouchEnd);
             return;
         }
-
-        this.state = DrawerController.kDragging;
     }
 
+    this.velocityTracker.onTouchMove(e);
     e.preventDefault();
-    var touchDeltaX = e.changedTouches[0].clientX - this.touchBaseX;
-    this.position = this.restrictToBounds(this.startPosition + touchDeltaX);
-    this.animator.scheduleAnimation();
+
+    var deltaX = e.changedTouches[0].screenX - this.baseX;
+    this.baseX = e.changedTouches[0].screenX;
+    this.player.currentTime += deltaX / this.movement;
 };
 
 DrawerController.prototype.onTouchEnd = function(e) {
@@ -242,101 +288,29 @@ DrawerController.prototype.onTouchEnd = function(e) {
     var velocityX = this.velocityTracker.velocityX;
     if (Math.abs(velocityX) > DrawerController.kMinFlingVelocity) {
         this.fling(velocityX);
-    } else if (this.isOpen()) {
+    } else if (this.progress() >= 0.5) {
         this.open();
     } else {
         this.close();
     }
 };
 
-DrawerController.prototype.openFraction = function() {
-    var width = this.right - this.left;
-    var offset = this.position - this.left;
-    return offset / width;
-};
-
-DrawerController.prototype.isOpen = function() {
-    return this.openFraction() >= 0.5;
-};
-
-DrawerController.prototype.isOpening = function() {
-    return this.state == DrawerController.kOpening ||
-        (this.state == DrawerController.kFlinging && this.animationVelocityX > 0);
-}
-
-DrawerController.prototype.isClosing = function() {
-    return this.state == DrawerController.kClosing ||
-        (this.state == DrawerController.kFlinging && this.animationVelocityX < 0);
-}
-
 DrawerController.prototype.toggle = function() {
-    if (this.isOpen())
+    if (this.progress() >= 0.5)
         this.close();
     else
         this.open();
 };
 
 DrawerController.prototype.open = function() {
-    if (!this.position)
+    if (this.progress() == 0)
         this.willOpenCallback.call(this.target);
-
-    this.animator.stopAnimation();
-    this.animationDuration = 400;
-    this.state = DrawerController.kOpening;
-    this.animate();
+        
+    this.resumeAnimation('normal');
 };
 
 DrawerController.prototype.close = function() {
-    this.animator.stopAnimation();
-    this.animationDuration = 400;
-    this.state = DrawerController.kClosing;
-    this.animate();
-};
-
-DrawerController.prototype.fling = function(velocityX) {
-    this.animator.stopAnimation();
-    this.animationVelocityX = velocityX;
-    this.state = DrawerController.kFlinging;
-    this.animate();
-};
-
-DrawerController.prototype.animate = function() {
-    this.positionAnimationBase = this.position;
-    this.animator.startAnimation();
-};
-
-DrawerController.prototype.targetPosition = function(deltaT) {
-    if (this.state == DrawerController.kFlinging)
-        return this.positionAnimationBase + this.animationVelocityX * deltaT;
-    var targetFraction = this.curve.scaleTime(deltaT / this.animationDuration);
-    var animationWidth = this.state == DrawerController.kOpening ?
-      this.width - this.positionAnimationBase : -this.positionAnimationBase;
-    return this.positionAnimationBase + targetFraction * animationWidth;
-};
-
-DrawerController.prototype.onAnimation = function(timeStamp) {
-    if (this.state == DrawerController.kDragging) {
-        this.animateCallback.call(this.target, this.position);
-        return false;
-    }
-
-    var deltaT = timeStamp - this.animator.startTimeStamp;
-    var targetPosition = this.targetPosition(deltaT);
-    this.position = this.restrictToBounds(targetPosition);
-
-    this.animateCallback.call(this.target, this.position);
-
-    if (targetPosition <= this.left && this.isClosing()) {
-        this.state = DrawerController.kClosed;
-        this.didCloseCallback.call(this.target);
-        return false;
-    }
-    if (targetPosition >= this.right && this.isOpening()) {
-        this.state = DrawerController.kOpened;
-        return false;
-    }
-
-    return true;
+    this.resumeAnimation('reverse');
 };
 
 
