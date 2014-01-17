@@ -1,0 +1,47 @@
+BUILD LOG
+---------
+Build Time: 2014-01-09T16:42:26
+
+NODEJS INFORMATION
+==================
+nodejs: v0.10.24
+chai: 1.8.1
+grunt: 0.4.1
+grunt-audit: 0.0.2
+grunt-concat-sourcemap: 0.3.2
+grunt-contrib-concat: 0.3.0
+grunt-contrib-uglify: 0.2.7
+grunt-contrib-yuidoc: 0.5.0
+grunt-karma: 0.6.2
+karma: 0.10.4
+karma-chrome-launcher: 0.0.2 (git://github.com/morethanreal/karma-chrome-launcher#aaaef751f4c39b4671447f4b62a3462101f8a3c4)
+karma-coffee-preprocessor: 0.1.0
+karma-crbot-reporter: 0.0.4
+karma-firefox-launcher: 0.1.0
+karma-html2js-preprocessor: 0.1.0
+karma-ie-launcher: 0.1.1
+karma-jasmine: 0.1.3
+karma-mocha: 0.1.0
+karma-phantomjs-launcher: 0.1.0
+karma-requirejs: 0.1.0
+karma-safari-launcher: 0.1.1
+karma-script-launcher: 0.1.0
+mocha: 1.14.0
+
+REPO REVISIONS
+==============
+CustomElements: 75798bf6ecf397ac25029974a96af68618baafa0
+HTMLImports: 7dc0c50f38fd89411b01f6fdd98f008d276e022a
+NodeBind: f7cc76749e509e06fa7cbc9ba970f87f5fe33b5c
+PointerEvents: 80457624cc756cc042c076dc4e508201d99ced2d
+PointerGestures: 90e93f777b60d817a072da3f482dd1f9bb625c73
+ShadowDOM: de3c0614ddb8201f54b173e297bccc98fab2ac6b
+TemplateBinding: bec956e7420da8940165923807e6e86aafd2aa89
+WeakMap: fc7c7925546282881c6ff4d58103d6355659f56f
+observe-js: 920a6d6ee3160830ff8f807f9e85461c2b852c6b
+platform: e3b798b57065bfb38a7ee5b69176dffb57cfbe3a
+polymer-expressions: 47c7bbf65d4420a0763e0768deaccf96226d02b6
+
+BUILD HASHES
+============
+build/platform.js: 24874b8a9d5781c5d6a100a5f96ca28b6c556666
